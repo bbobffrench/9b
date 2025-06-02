@@ -186,7 +186,7 @@ init_xkb(window_t *window){
 window_t *
 create_window(uint16_t width, uint16_t height, const char *font, uint8_t font_size){
 	window_t *window;
-	window = malloc(sizeof(window));
+	window = malloc(sizeof(window_t));
 	if(!init_xcb(window, width, height)){
 		free(window);
 		return NULL;
@@ -365,19 +365,32 @@ handle_motion(xcb_motion_notify_event_t *event){
 uint64_t
 get_event(window_t *window){
 	xcb_generic_event_t *event;
+	uint64_t event_code = NONE;
+
 	event = xcb_wait_for_event(window->connection);
 	switch(event->response_type & ~0x80){
-		case XCB_EXPOSE: return EXPOSE;
-		case XCB_BUTTON_PRESS: return handle_button((xcb_button_press_event_t *)event);
-		case XCB_KEY_PRESS: return handle_key((xcb_key_press_event_t *)event, window);
-		case XCB_MOTION_NOTIFY: return handle_motion((xcb_motion_notify_event_t *)event);
-		case XCB_CONFIGURE_NOTIFY: return RESIZE;
+		case XCB_EXPOSE:
+			event_code = EXPOSE;
+			break;
+		case XCB_BUTTON_PRESS:
+			event_code = handle_button((xcb_button_press_event_t *)event);
+			break;
+		case XCB_KEY_PRESS:
+			event_code = handle_key((xcb_key_press_event_t *)event, window);
+			break;
+		case XCB_MOTION_NOTIFY:
+			event_code = handle_motion((xcb_motion_notify_event_t *)event);
+			break;
+		case XCB_CONFIGURE_NOTIFY:
+			event_code = RESIZE;
+			break;
 		case XCB_CLIENT_MESSAGE:
 			if(((xcb_client_message_event_t *)event)->data.data32[0] == window->delete_window){
 				destroy_window(window);
-				return QUIT;
+				event_code = QUIT;
 			}
-			else return NONE;
+			break;
 	}
-	return NONE;
+	free(event);
+	return event_code;
 }

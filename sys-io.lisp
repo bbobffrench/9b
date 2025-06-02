@@ -170,7 +170,7 @@
 (defun event-test ()
   (let ((event (get-event)))
     (cond ((eq (car event) :none) (event-test))
-          ((eq (car event) :quit) t)
+          ((eq (car event) :quit) (setf *window* nil))
           (t
            (progn
              (print event)
