@@ -39,6 +39,9 @@ enum special_keys{
 };
 
 typedef struct{
+	uint16_t width;
+	uint16_t height;
+
 	xcb_connection_t *connection;
 	xcb_screen_t *screen;
 	xcb_window_t win;
@@ -187,6 +190,8 @@ window_t *
 create_window(uint16_t width, uint16_t height, const char *font, uint8_t font_size){
 	window_t *window;
 	window = malloc(sizeof(window_t));
+	window->width = width;
+	window->height = height;
 	if(!init_xcb(window, width, height)){
 		free(window);
 		return NULL;
@@ -210,20 +215,12 @@ destroy_window(window_t *window){
 
 uint16_t
 window_width(window_t *window){
-	xcb_get_geometry_cookie_t cookie;
-	xcb_get_geometry_reply_t *reply;
-	cookie = xcb_get_geometry(window->connection, window->win);
-	reply = xcb_get_geometry_reply(window->connection, cookie, NULL);
-	return reply->width;
+	return window->width;
 }
 
 uint16_t
 window_height(window_t *window){
-	xcb_get_geometry_cookie_t cookie;
-	xcb_get_geometry_reply_t *reply;
-	cookie = xcb_get_geometry(window->connection, window->win);
-	reply = xcb_get_geometry_reply(window->connection, cookie, NULL);
-	return reply->height;
+	return window->height;
 }
 
 uint8_t
@@ -362,6 +359,15 @@ handle_motion(xcb_motion_notify_event_t *event){
 	return MOTION + (state << 8) + (x << 16) + (y << 32);
 }
 
+static uint64_t
+handle_resize(xcb_configure_notify_event_t *event, window_t *window){
+	if(event->width == window->width || event->height == window->height)
+		return NONE;
+	window->width = event->width;
+	window->height = event->height;
+	return RESIZE;
+}
+
 uint64_t
 get_event(window_t *window){
 	xcb_generic_event_t *event;
@@ -382,7 +388,7 @@ get_event(window_t *window){
 			event_code = handle_motion((xcb_motion_notify_event_t *)event);
 			break;
 		case XCB_CONFIGURE_NOTIFY:
-			event_code = RESIZE;
+			event_code = handle_resize((xcb_configure_notify_event_t *)event, window);
 			break;
 		case XCB_CLIENT_MESSAGE:
 			if(((xcb_client_message_event_t *)event)->data.data32[0] == window->delete_window){
