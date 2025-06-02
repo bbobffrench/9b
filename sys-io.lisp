@@ -1,59 +1,83 @@
-;;;; Defines an interface to X11 and Cairo through `sys-io.c' for handling graphics and user input
+;;;; sys-io.lisp
+;;;;
+;;;; This file provides a CFFI wrapper around `sys-io.c'
 
-(ql:quickload "cffi")
+(defpackage 9b/sys-io
+  (:use :common-lisp :cffi)
+  (:export *window*
+           create-window
+           destroy-window
+           window-width
+           window-height
+           glyph-width
+           glyph-height
+           display-window
+           set-color
+           move-to
+           line-to
+           draw
+           fill
+           clear-window
+           print-string
+           get-event))
 
-(cffi:define-foreign-library sys-io (t "sys-io.so"))
-(cffi:use-foreign-library sys-io)
+(in-package :9b/sys-io)
 
-;;; Window creation, deletion, and querying
+(define-foreign-library sys-io (t "sys-io.so"))
+(use-foreign-library sys-io)
+
+;;; Window creation, deletion, and information querying
 ;;;
-(cffi:defcfun "create_window" :pointer
+(defvar *window* nil)
+
+(defcfun ("create_window" create-window%) :pointer
   (width :uint16)
   (height :uint16)
   (font :string)
   (font-size :uint8))
 
-(defparameter *window* (create-window 800 800 "Iosevka" 10))
+(defun create-window (width height font font-size)
+  (setf *window* (create-window% width height font font-size)))
 
-(cffi:defcfun ("destroy_window" destroy-window%) :void
+(defcfun ("destroy_window" destroy-window%) :void
   (window :pointer))
 
 (defun destroy-window ()
   (destroy-window% *window*))
 
-(cffi:defcfun ("window_width" window-width%) :uint16
+(defcfun ("window_width" window-width%) :uint16
   (window :pointer))
 
 (defun window-width ()
   (window-width% *window*))
 
-(cffi:defcfun ("window_height" window-height%) :uint16
+(defcfun ("window_height" window-height%) :uint16
   (window :pointer))
 
 (defun window-height ()
   (window-height% *window*))
 
-(cffi:defcfun ("glyph_width" glyph-width%) :uint8
+(defcfun ("glyph_width" glyph-width%) :uint8
   (window :pointer))
 
 (defun glyph-width ()
   (glyph-width% *window*))
 
-(cffi:defcfun ("glyph_height" glyph-height%) :uint8
+(defcfun ("glyph_height" glyph-height%) :uint8
   (window :pointer))
 
 (defun glyph-height ()
   (glyph-height% *window*))
 
-;;; Drawing of text and primitive graphics to the window
+;;; Drawing of primitive graphics and text to the window
 ;;;
-(cffi:defcfun ("display_window" display-window%) :void
+(defcfun ("display_window" display-window%) :void
   (window :pointer))
 
 (defun display-window ()
   (display-window% *window*))
 
-(cffi:defcfun ("set_color" set-color%) :void
+(defcfun ("set_color" set-color%) :void
   (window :pointer)
   (r :uint8)
   (g :uint8)
@@ -62,7 +86,7 @@
 (defun set-color (red green blue)
   (set-color% *window* red green blue))
 
-(cffi:defcfun ("move_to" move-to%) :void
+(defcfun ("move_to" move-to%) :void
   (window :pointer)
   (x :uint16)
   (y :uint16))
@@ -70,7 +94,7 @@
 (defun move-to (x y)
   (move-to% *window* x y))
 
-(cffi:defcfun ("line_to" line-to%) :void
+(defcfun ("line_to" line-to%) :void
   (window :pointer)
   (x :uint16)
   (y :uint16))
@@ -78,25 +102,25 @@
 (defun line-to (x y)
   (line-to% *window* x y))
 
-(cffi:defcfun ("draw" draw%) :void
+(defcfun ("draw" draw%) :void
   (window :pointer))
 
 (defun draw ()
   (draw% *window*))
 
-(cffi:defcfun ("fill_region" fill-region%) :void
+(defcfun ("fill_region" fill-region%) :void
   (window :pointer))
 
 (defun fill-region ()
   (fill-region% *window*))
 
-(cffi:defcfun ("clear_window" clear-window%) :void
+(defcfun ("clear_window" clear-window%) :void
   (window :pointer))
 
 (defun clear-window ()
   (clear-window% *window*))
 
-(cffi:defcfun ("print_string" print-string%) :void
+(defcfun ("print_string" print-string%) :void
   (window :pointer)
   (str :string))
 
@@ -105,7 +129,7 @@
 
 ;;; Handling of user input and window state events
 ;;;
-(cffi:defcenum event-types
+(defcenum event-types
   :none
   :expose
   :button-left-press
@@ -118,20 +142,20 @@
   :resize
   :quit)
 
-(cffi:defcenum event-states
+(defcenum event-states
   (:button-left 1)
   (:button-middle 2)
   (:button-right 4)
   (:control 8))
 
-(cffi:defcenum special-keys
+(defcenum special-keys
   (:backspace #x1ff)
   (:left #x2ff)
   (:right #x3ff)
   (:up #x4ff)
   (:down #x5ff))
 
-(cffi:defcfun ("get_event" get-event%) :uint64
+(defcfun ("get_event" get-event%) :uint64
   (window :pointer))
 
 (defun decode-state (state)
@@ -139,7 +163,7 @@
       nil
       ;; Isolate the least significant set bit
       (let ((isolated-lssb (logand state (1+ (lognot state)))))
-        (cons (cffi:foreign-enum-keyword 'event-states isolated-lssb)
+        (cons (foreign-enum-keyword 'event-states isolated-lssb)
               (decode-state (logand state (lognot isolated-lssb)))))))
 
 (defun interpret-signed-16 (unsigned)
@@ -147,7 +171,7 @@
 
 (defun get-event ()
   (let* ((event-mask (get-event% *window*))
-         (type (cffi:foreign-enum-keyword 'event-types (logand #xff event-mask))))
+         (type (foreign-enum-keyword 'event-types (logand #xff event-mask))))
     (cond ((or (eq type :button-left-press)
                (eq type :button-middle-press)
                (eq type :button-right-press)
@@ -162,19 +186,7 @@
            (let ((state (decode-state (ash (logand #xff00 event-mask) -8)))
                  (key (ash (logand #xffff0000 event-mask) -16)))
              (if (> key #xff)
-                 (list type state (cffi:foreign-enum-keyword 'special-keys key))
+                 (list type state (foreign-enum-keyword 'special-keys key))
                  (list type state (code-char key)))))
           ;; Otherwise, just return the event type
           (t (list type)))))
-
-(defun event-test ()
-  (let ((event (get-event)))
-    (cond ((eq (car event) :none) (event-test))
-          ((eq (car event) :quit) (setf *window* nil))
-          (t
-           (progn
-             (print event)
-             (finish-output)
-             (event-test))))))
-
-(event-test)
