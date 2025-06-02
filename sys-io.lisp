@@ -26,7 +26,7 @@
 (define-foreign-library sys-io (t "sys-io.so"))
 (use-foreign-library sys-io)
 
-;;; Window creation, deletion, and information querying
+;;; Window operations and information querying
 ;;;
 (defvar *window* nil)
 
@@ -68,6 +68,14 @@
 
 (defun glyph-height ()
   (glyph-height% *window*))
+
+(defcfun ("move_pointer" move-pointer%) :void
+  (window :pointer)
+  (x :uint16)
+  (y :uint16))
+
+(defun move-pointer (x y)
+  (move-pointer% *window* x y))
 
 ;;; Drawing of primitive graphics and text to the window
 ;;;

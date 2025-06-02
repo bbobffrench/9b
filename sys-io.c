@@ -1,3 +1,8 @@
+/* sys-io.c
+ *
+ * This file provides a layer of abstraction above XCB, cairo, and libxkbcommon, allowing for
+ * user input and graphical output to an X11 window.
+ */
 #include <xcb/xcb.h>
 
 #include <xkbcommon/xkbcommon.h>
@@ -231,6 +236,17 @@ glyph_width(window_t *window){
 uint8_t
 glyph_height(window_t *window){
 	return window->glyph_height;
+}
+
+void
+move_pointer(window_t *window, uint16_t x, uint16_t y){
+	xcb_warp_pointer(
+		window->connection,
+		XCB_NONE,
+		window->win,
+		0, 0, 0, 0,
+		x, y
+	);
 }
 
 void
