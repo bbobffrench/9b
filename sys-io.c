@@ -19,7 +19,8 @@ enum event_types{
 	SCROLL_UP,
 	KEY_PRESS,
 	MOTION,
-	RESIZE
+	RESIZE,
+	QUIT
 };
 
 enum event_states{
@@ -41,6 +42,7 @@ typedef struct{
 	xcb_connection_t *connection;
 	xcb_screen_t *screen;
 	xcb_window_t win;
+	xcb_atom_t delete_window;
 
 	cairo_surface_t *surface;
 	cairo_t *cr;
@@ -58,6 +60,8 @@ init_xcb(window_t *window, uint16_t width, uint16_t height){
 	xcb_screen_t *screen;
 	uint32_t event_mask;
 	xcb_window_t xcb_window;
+	xcb_intern_atom_cookie_t protocols_cookie, delete_window_cookie;
+	xcb_intern_atom_reply_t *protocols_reply, *delete_window_reply;
 
 	connection = xcb_connect(NULL, NULL);
 	if(!connection){
@@ -85,6 +89,22 @@ init_xcb(window_t *window, uint16_t width, uint16_t height){
 	);
 	xcb_map_window(connection, xcb_window);
 	xcb_flush(connection);
+	protocols_cookie = xcb_intern_atom(connection, 1, 12, "WM_PROTOCOLS");
+	delete_window_cookie = xcb_intern_atom(connection, 0, 16, "WM_DELETE_WINDOW");
+	protocols_reply = xcb_intern_atom_reply(connection, protocols_cookie, NULL);
+	delete_window_reply = xcb_intern_atom_reply(connection, delete_window_cookie, NULL);
+	xcb_change_property(
+		connection,
+		XCB_PROP_MODE_REPLACE,
+		xcb_window,
+		protocols_reply->atom,
+		XCB_ATOM_ATOM,
+		32, 1,
+		&delete_window_reply->atom
+	);
+	window->delete_window = delete_window_reply->atom;
+	free(protocols_reply);
+	free(delete_window_reply);
 	window->connection = connection;
 	window->screen = screen;
 	window->win = xcb_window;
@@ -183,6 +203,7 @@ destroy_window(window_t *window){
 	xkb_context_unref(window->ctx);
 	xkb_keymap_unref(window->keymap);
 	xkb_state_unref(window->state);
+	xcb_destroy_window(window->connection, window->win);
 	xcb_disconnect(window->connection);
 	free(window);
 }
@@ -351,6 +372,12 @@ get_event(window_t *window){
 		case XCB_KEY_PRESS: return handle_key((xcb_key_press_event_t *)event, window);
 		case XCB_MOTION_NOTIFY: return handle_motion((xcb_motion_notify_event_t *)event);
 		case XCB_CONFIGURE_NOTIFY: return RESIZE;
+		case XCB_CLIENT_MESSAGE:
+			if(((xcb_client_message_event_t *)event)->data.data32[0] == window->delete_window){
+				destroy_window(window);
+				return QUIT;
+			}
+			else return NONE;
 	}
 	return NONE;
 }

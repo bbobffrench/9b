@@ -115,7 +115,8 @@
   :scroll-up
   :key-press
   :motion
-  :resize)
+  :resize
+  :quit)
 
 (cffi:defcenum event-states
   (:button-left 1)
@@ -168,7 +169,8 @@
 
 (defun event-test ()
   (let ((event (get-event)))
-    (cond ((eq event :none) (event-test))
+    (cond ((eq (car event) :none) (event-test))
+          ((eq (car event) :quit) t)
           (t
            (progn
              (print event)
