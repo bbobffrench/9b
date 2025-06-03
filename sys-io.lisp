@@ -3,7 +3,7 @@
 ;;;; This file provides a CFFI wrapper around `sys-io.c'
 
 (defpackage 9b/sys-io
-  (:use :common-lisp :cffi)
+  (:use :common-lisp :9b/utils :cffi)
   (:export *window*
            create-window
            destroy-window
@@ -91,8 +91,9 @@
   (g :uint8)
   (b :uint8))
 
-(defun set-color (red green blue)
-  (set-color% *window* red green blue))
+(defun set-color (color)
+  (destructuring-bind (red green blue) color
+    (set-color% *window* red green blue)))
 
 (defcfun ("move_to" move-to%) :void
   (window :pointer)
@@ -180,10 +181,7 @@
 (defun get-event ()
   (let* ((event-mask (get-event% *window*))
          (type (foreign-enum-keyword 'event-types (logand #xff event-mask))))
-    (cond ((or (eq type :button-left-press)
-               (eq type :button-middle-press)
-               (eq type :button-right-press)
-               (eq type :motion))
+    (cond ((oreq type :button-left-press :button-middle-press :button-right-press :motion)
            ;; For button presses and motion, extract state and pointer coordinates
            (let ((state (decode-state (ash (logand #xff00 event-mask) -8)))
                  (x (interpret-signed-16 (ash (logand #xffff0000 event-mask) -16)))
