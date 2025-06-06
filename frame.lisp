@@ -1,30 +1,30 @@
 ;;;; frame.lisp
 ;;;;
-;;;; This file implements the concept of a frame. Frames are comprised of four compenents: title
-;;;; buffer, main buffer, scroll bar, and corner. Frames are stateless, and only hold information
-;;;; on their current dimensions and coordinates.
+;;;; This file implements the concept of a frame. A frame has no knowledge of what it is framing and
+;;;; is simply designates a rectangular area that can be drawn to. Frames will be used for two main
+;;;; purposes: to hold the main text buffer including the scroll bar, and to hold the title buffer
+;;;; which also includes the corner showing information such as whether or not the file is modified.
+;;;; A buffer frame refers to two frames, one for each of these uses, stored in a cons cell in the
+;;;; format (title-buffer-frame . main-text-frame). A title frame refers to a single frame that
+;;;; will only be used for displaying a title buffer (e.g. a column header)
 
 (defpackage 9b/frame
   (:use :common-lisp :9b/utils :9b/colors :9b/sys-io)
-  (:export *scroll-bar-width*
-           make-frame
-           draw-main-buffer
-           draw-title-buffer
+  (:export make-frame
+           fill-frame
            draw-corner
            draw-scroll-bar
            draw-buffer-sep
-           draw-frame-sep
-           draw-frame))
+           draw-frame-sep))
 
 (in-package :9b/frame)
 
-(defparameter *scroll-bar-width* 14)
+(defvar *scroll-bar-width* 14)
+(defvar *fringe-width* 2)
 
 (defun make-frame (x y width height)
   (list (cons :x x) (cons :y y) (cons :width width) (cons :height height)))
 
-;;; Drawing of the main frame components
-;;;
 (defun draw-rect (frame x y width height color)
   (set-color color)
   (alist-bind ((:x frame-x) (:y frame-y))
@@ -41,73 +41,63 @@
      ,@body
      (if display-p (display-window))))
 
-(defdraw draw-main-buffer (frame)
+;; Calling this will overwrite anything else drawn in the frame such as a scroll bar or corner, so
+;; the entire frame should be redrawn afterwards in most cases
+(defdraw fill-frame (frame color)
   (alist-bind ((:width frame-width) (:height frame-height))
       frame
-    ;; Account for scroll bar and title buffer
-    (let* ((start-x *scroll-bar-width*) (width (- frame-width start-x))
-           (start-y (+ (glyph-height) 3)) (height (- frame-height start-y)))
-      (draw-rect frame
-                 start-x start-y
-                 width height
-                 *bg-color*))))
+    (draw-rect frame 0 0 frame-width frame-height color)))
 
-(defdraw draw-title-buffer (frame )
-  (alist-bind ((:width frame-width))
-      frame
-    (draw-rect frame
-               *scroll-bar-width* 0
-               (- frame-width *scroll-bar-width*) (+ (glyph-height) 2)
-               *title-buffer-bg-color*)))
+;;; NOTE: All drawing operations expect the frame to be able to fit whatever is being drawn. The
+;;; burden of ensuring this falls on the frame management subsystem
 
 (defdraw draw-corner (frame style)
+  ;; Draw the corner background
   (draw-rect frame
              0 0
-             *scroll-bar-width* (+ (glyph-height) 3)
+             *scroll-bar-width* (+ (glyph-height) 2) ; Add 2 pixels to account for title padding
              (if (eq style :top-title) *title-buffer-bg-color* *corner-bg-color*))
-  (draw-rect frame
-             2 2
-             (- *scroll-bar-width* 4) (- (+ (glyph-height) 2) 3)
-             (case style
-             (:top-title *title-buffer-bg-color*)
-             (:column-title *corner-bg-color*)
-             (:unmodified *corner-unmodified-color*)
-             (:modified *corner-modified-color*))))
+  ;; Draw the indicator if necessary
+  (if (oreq style :modified :unmodified)
+      ;; 2 padding pixels will be added on the top, left, and right to ensure the background is
+      ;; visible. Only one padding pixel will be added on the bottom because the title separator
+      ;; below, which has the same color, will contribute the second pixel thus resulting in an
+      ;; even border.
+      (draw-rect frame
+                 2 2
+                 (- *scroll-bar-width* 4) (- (glyph-height) 1)
+                 (if (eq style :unmodified)
+                     *corner-unmodified-color*
+                     *corner-modified-color*))))
 
 (defdraw draw-scroll-bar (frame start% fill%)
   (alist-bind ((:height frame-height))
       frame
-    (let ((start-y (+ (glyph-height) 3))) ; Account for title buffer height
-      (draw-rect frame
-                 0 start-y
-                 *scroll-bar-width* (- frame-height start-y)
-                 *scroll-bar-bg-color*)
-      ;; Find the size and dimensions of the active portion based on start and fill percentages
-      (let ((active-start-y (+ start-y (ceiling (* start% frame-height))))
-            (active-height (ceiling (* fill% (- frame-height start-y)))))
-        (draw-rect frame
-                   0 active-start-y
-                   (1- *scroll-bar-width*) active-height
-                   *scroll-bar-fg-color*)))))
+    ;; Draw the scroll bar background
+    (draw-rect frame 0 0 *scroll-bar-width* frame-height *scroll-bar-bg-color*)
 
+    ;; Find the size and dimensions of the active portion based on start and fill percentages
+    (let ((start-y (ceiling (* start% frame-height)))
+          (height (ceiling (* fill% frame-height))))
+      ;; Draw the active portion of the scroll bar
+      (draw-rect frame 0 start-y (1- *scroll-bar-width*) height *scroll-bar-fg-color*))))
+
+;; This separator is used to separate the title from the body in a buffer frame
 (defdraw draw-buffer-sep (frame)
   (alist-bind ((:width frame-width))
       frame
-    (draw-rect frame
-               0 (+ (glyph-height) 2)
-               frame-width 1
-               *title-buffer-sep-color*)))
+    (draw-rect frame 0 (+ (glyph-height) 2) frame-width 1 *title-buffer-sep-color*)))
 
-(defdraw draw-sep (frame pos vertical-p)
-  (alist-bind ((:width frame-width) (:height frame-height))
-      frame
-    (if vertical-p
-        (draw-rect frame pos 0 2 frame-height *fg-color*)
-        (draw-rect frame 0 pos frame-width 2 *fg-color*))))
-
-(defdraw draw-frame (frame start% fill% corner-style)
-  (draw-title-buffer frame)
-  (draw-corner frame corner-style)
-  (draw-scroll-bar frame start% fill%)
-  (draw-main-buffer frame)
-  (draw-buffer-sep frame))
+;; This separator is used to create separation between buffer/title frames
+(defdraw draw-sep (x y size vertical-p)
+  (move-to x y)
+  (if vertical-p
+      (progn
+        (line-to x (+ y size))
+        (line-to (1+ x) (+ y size))
+        (line-to (1+ x) y))
+      (progn
+        (line-to (+ x size) y)
+        (line-to (+ x size) (1+ y))
+        (line-to x (1+ y))))
+  (fill-region))
