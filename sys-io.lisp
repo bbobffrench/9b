@@ -16,7 +16,7 @@
            move-to
            line-to
            draw
-           fill
+           fill-region
            clear-window
            print-string
            get-event))

@@ -4,7 +4,8 @@
 
 (defpackage 9b/utils
   (:use :common-lisp)
-  (:export oreq))
+  (:export oreq
+           alist-bind))
 
 (in-package :9b/utils)
 
@@ -12,3 +13,12 @@
   (cond ((null comparisons) nil)
         ((eq item (car comparisons)) t)
         (t (apply #'oreq `(,item ,@(cdr comparisons))))))
+
+(defmacro alist-bind (slots alist &body body)
+  `(let ,(mapcar (lambda (slot) `(,(cadr slot) (cdr (assoc ,(car slot) ,alist))))
+                 slots)
+     ,@body))
+
+(defmacro with-gensyms (names &body body)
+  `(let ,(mapcar (lambda (name) `(,name (gensym))) names)
+     ,@body))
