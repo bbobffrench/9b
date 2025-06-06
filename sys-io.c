@@ -2,6 +2,9 @@
  *
  * This file provides a layer of abstraction above XCB, cairo, and libxkbcommon, allowing for
  * user input and graphical output to an X11 window.
+ *
+ * cc -shared sys-io.c -lxcb -lcairo -lxkbcommon -lxkbcommon-x11 -o sys-io.so
+ *
  */
 #include <xcb/xcb.h>
 
@@ -54,6 +57,7 @@ typedef struct{
 
 	cairo_surface_t *surface;
 	cairo_t *cr;
+	uint8_t glyph_ascent;
 	uint8_t glyph_width;
 	uint8_t glyph_height;
 
@@ -149,6 +153,7 @@ init_cairo(window_t *window, uint16_t width, uint16_t height, const char *font, 
 	cairo_surface_t *surface;
 	cairo_t *cr;
 	cairo_font_extents_t font_extents;
+	cairo_text_extents_t text_extents;
 
 	visualtype = get_visualtype(window->screen);
 	surface = cairo_xcb_surface_create(
@@ -163,9 +168,11 @@ init_cairo(window_t *window, uint16_t width, uint16_t height, const char *font, 
 	cairo_select_font_face(cr, font, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(cr, px_to_pt(font_size, window->screen));
 	cairo_font_extents(cr, &font_extents);
+	cairo_text_extents(cr, ".", &text_extents);
 	window->surface = surface;
 	window->cr = cr;
-	window->glyph_width = (uint8_t)font_extents.max_x_advance;
+	window->glyph_ascent = (uint8_t)font_extents.ascent;
+	window->glyph_width = (uint8_t)text_extents.x_advance;
 	window->glyph_height = (uint8_t)font_extents.height;
 }
 
@@ -226,6 +233,11 @@ window_width(window_t *window){
 uint16_t
 window_height(window_t *window){
 	return window->height;
+}
+
+uint8_t
+glyph_ascent(window_t *window){
+	return window->glyph_ascent;
 }
 
 uint8_t

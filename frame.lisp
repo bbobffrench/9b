@@ -5,11 +5,11 @@
 ;;;; purposes: to hold the main text buffer including the scroll bar, and to hold the title buffer
 ;;;; which also includes the corner showing information such as whether or not the file is modified.
 ;;;; A buffer frame refers to two frames, one for each of these uses, stored in a cons cell in the
-;;;; format (title-buffer-frame . main-text-frame). A title frame refers to a single frame that
-;;;; will only be used for displaying a title buffer (e.g. a column header)
+;;;; format (title-frame . body-frame). A title frame refers to a single frame that will only be used
+;;;; for displaying a title buffer (e.g. a column header)
 
 (defpackage 9b/frame
-  (:use :common-lisp :9b/utils :9b/colors :9b/sys-io)
+  (:use common-lisp 9b/utils 9b/colors 9b/sys-io)
   (:export make-frame
            fill-frame
            draw-corner
@@ -17,10 +17,10 @@
            draw-buffer-sep
            draw-frame-sep))
 
-(in-package :9b/frame)
+(in-package 9b/frame)
 
-(defvar *scroll-bar-width* 14)
-(defvar *fringe-width* 2)
+(defparameter *scroll-bar-width* 13)
+(defparameter *fringe-width* 4)
 
 (defun make-frame (x y width height)
   (list (cons :x x) (cons :y y) (cons :width width) (cons :height height)))
@@ -55,8 +55,8 @@
   ;; Draw the corner background
   (draw-rect frame
              0 0
-             *scroll-bar-width* (+ (glyph-height) 2) ; Add 2 pixels to account for title padding
-             (if (eq style :top-title) *title-buffer-bg-color* *corner-bg-color*))
+             *scroll-bar-width* (glyph-height)
+             (if (eq style :top-title) *title-bg-color* *corner-bg-color*))
   ;; Draw the indicator if necessary
   (if (oreq style :modified :unmodified)
       ;; 2 padding pixels will be added on the top, left, and right to ensure the background is
@@ -65,7 +65,7 @@
       ;; even border.
       (draw-rect frame
                  2 2
-                 (- *scroll-bar-width* 4) (- (glyph-height) 1)
+                 (- *scroll-bar-width* 4) (- (glyph-height) 3)
                  (if (eq style :unmodified)
                      *corner-unmodified-color*
                      *corner-modified-color*))))
@@ -86,7 +86,15 @@
 (defdraw draw-buffer-sep (frame)
   (alist-bind ((:width frame-width))
       frame
-    (draw-rect frame 0 (+ (glyph-height) 2) frame-width 1 *title-buffer-sep-color*)))
+    (draw-rect frame 0 (glyph-height) frame-width 1 *title-sep-color*)))
+
+(defdraw draw-buffer-frame (buffer-frame corner-style start% fill%)
+  (let ((title (car buffer-frame)) (body (cdr buffer-frame)))
+    (fill-frame title *title-bg-color*)
+    (draw-corner title corner-style)
+    (draw-buffer-sep title)
+    (fill-frame body *bg-color*)
+    (draw-scroll-bar body start% fill%)))
 
 ;; This separator is used to create separation between buffer/title frames
 (defdraw draw-sep (x y size vertical-p)
@@ -101,3 +109,41 @@
         (line-to (+ x size) (1+ y))
         (line-to x (1+ y))))
   (fill-region))
+
+(defun col-to-x (col)
+  (+ (+ *scroll-bar-width* *fringe-width*)
+     (* (glyph-width) col)))
+
+(defun row-to-y (row)
+  (* (glyph-height) row))
+
+(defun frame-cols (frame)
+  (alist-bind ((:width frame-width))
+      frame
+    (floor frame-width (glyph-width))))
+
+(defun frame-rows (frame)
+  (alist-bind ((:height frame-height))
+      frame
+    (floor frame-height (glyph-height))))
+
+(defdraw draw-text (frame str row col)
+  (set-color *fg-color*)
+  (alist-bind ((:x start-x) (:y start-y))
+      frame
+    (move-to (+ start-x (col-to-x col))
+             (+ start-y (glyph-ascent) (row-to-y row)))
+    (print-string str)))
+
+(defdraw draw-cursor (frame row col)
+  (let ((start-x (col-to-x col)) (start-y (row-to-y row)))
+    ;; Draw central bar
+    (draw-rect frame start-x start-y 1 (glyph-height) *fg-color*)
+
+    ;; Blank out areas to the left and right
+    (draw-rect frame (1- start-x) start-y 1 (glyph-height) *bg-color*)
+    (draw-rect frame (1+ start-x) start-y 1 (glyph-height) *bg-color*)
+
+    ;; Add top and bottom caps
+    (draw-rect frame (1- start-x) start-y 3 3 *fg-color*)
+    (draw-rect frame (1- start-x) (+ start-y (- (glyph-height) 3)) 3 3 *fg-color*)))

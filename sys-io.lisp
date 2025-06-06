@@ -3,12 +3,13 @@
 ;;;; This file provides a CFFI wrapper around `sys-io.c'
 
 (defpackage 9b/sys-io
-  (:use :common-lisp :9b/utils :cffi)
+  (:use common-lisp 9b/utils cffi)
   (:export *window*
            create-window
            destroy-window
            window-width
            window-height
+           glyph-ascent
            glyph-width
            glyph-height
            display-window
@@ -21,14 +22,12 @@
            print-string
            get-event))
 
-(in-package :9b/sys-io)
+(in-package 9b/sys-io)
+
+(defvar *window* nil)
 
 (define-foreign-library sys-io (t "sys-io.so"))
 (use-foreign-library sys-io)
-
-;;; Window operations and information querying
-;;;
-(defvar *window* nil)
 
 (defcfun ("create_window" create-window%) :pointer
   (width :uint16)
@@ -56,6 +55,12 @@
 
 (defun window-height ()
   (window-height% *window*))
+
+(defcfun ("glyph_ascent" glyph-ascent%) :uint8
+  (window :pointer))
+
+(defun glyph-ascent ()
+  (glyph-ascent% *window*))
 
 (defcfun ("glyph_width" glyph-width%) :uint8
   (window :pointer))
