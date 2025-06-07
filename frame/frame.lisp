@@ -87,6 +87,10 @@
     (fill-frame body *bg-color*)
     (draw-scroll-bar body start% fill%)))
 
+(defdraw draw-title-frame (title-frame corner-style)
+  (fill-frame title-frame *title-bg-color*)
+  (draw-corner title-frame corner-style))
+
 ;; This separator is used to create separation between buffer/title frames
 (defdraw draw-sep (x y size vertical-p)
   (move-to x y)
@@ -102,8 +106,7 @@
   (fill-region))
 
 (defun col-to-x (col)
-  (+ (+ *scroll-bar-width* *fringe-width*)
-     (* (glyph-width) col)))
+  (+ *scroll-bar-width* *fringe-width* (* (glyph-width) col)))
 
 (defun row-to-y (row)
   (* (glyph-height) row))
@@ -117,6 +120,52 @@
   (alist-bind ((:height frame-height))
       frame
     (floor frame-height (glyph-height))))
+
+(defdraw fill-row (frame row color)
+  (alist-bind ((:width frame-width))
+      frame
+    (draw-rect frame
+               (+ *scroll-bar-width* *fringe-width*) (row-to-y row)
+               (- frame-width *scroll-bar-width* *fringe-width*) (glyph-height)
+               color)))
+
+(defdraw fill-row-after-col (frame row col color)
+  (alist-bind ((:width frame-width))
+      frame
+    (draw-rect frame
+               (col-to-x col) (row-to-y row)
+               (- frame-width (col-to-x col)) (glyph-height)
+               color)))
+
+(defdraw fill-row-section (frame row start-col end-col color)
+  (draw-rect frame
+             (col-to-x start-col) (row-to-y row)
+             (- (col-to-x end-col) (col-to-x start-col)) (glyph-height)
+             color))
+
+;; This will be used for clearing buffer text, as well as highlighting a selection
+(defdraw fill-section (frame start-row start-col end-row end-col color)
+  (cond ((= start-row end-row)
+         ;; For the last row being filled, fill only the desired section
+         (fill-row-section frame start-row start-col end-col color))
+        ((zerop start-col)
+         ;; For the middle rows, fill from the start of the line to the edge of the frame
+         (progn
+           (fill-row frame start-row color)
+           (fill-section frame (1+ start-row) 0 end-row end-col color)))
+        ;; For the first row, clear from the starting column to the edge of the frame
+        (t (progn
+             (fill-row-after-col frame start-row start-col color)
+             (fill-section frame (1+ start-row) 0 end-row end-col color)))))
+
+;; This is necessary to clean up cursor cap fragments left in the fringe and should be called
+;; whenever the cursor is moved from column 0
+(defdraw clear-fringe (frame title-p)
+  (alist-bind ((:height frame-height))
+      frame
+    (draw-rect frame
+               *scroll-bar-width* 0 *fringe-width* frame-height
+               (if title-p *title-bg-color* *bg-color*))))
 
 (defdraw draw-text (frame str row col)
   (set-color *fg-color*)

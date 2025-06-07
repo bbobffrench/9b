@@ -5,7 +5,8 @@
 (defpackage 9b/utils
   (:use :common-lisp)
   (:export oreq
-           alist-bind))
+           alist-bind
+           alist-set))
 
 (in-package :9b/utils)
 
@@ -19,6 +20,5 @@
                  slots)
      ,@body))
 
-(defmacro with-gensyms (names &body body)
-  `(let ,(mapcar (lambda (name) `(,name (gensym))) names)
-     ,@body))
+(defun alist-set (alist item value)
+  (setf (cdr (assoc item alist)) value))
