@@ -167,22 +167,24 @@
                *scroll-bar-width* 0 *fringe-width* frame-height
                (if title-p *title-bg-color* *bg-color*))))
 
-(defdraw draw-text (frame str row col)
-  (set-color *fg-color*)
+(defdraw draw-text (frame str row col color)
+  (set-color color)
   (alist-bind ((:x start-x) (:y start-y))
       frame
     (move-to (+ start-x (col-to-x col))
              (+ start-y (glyph-ascent) (row-to-y row)))
     (print-string str)))
 
-(defdraw draw-cursor (frame row col)
+(defdraw draw-cursor (frame row col title-p)
   (let ((start-x (col-to-x col)) (start-y (row-to-y row)))
     ;; Draw central bar
     (draw-rect frame start-x start-y 1 (glyph-height) *fg-color*)
 
     ;; Blank out areas to the left and right
-    (draw-rect frame (1- start-x) start-y 1 (glyph-height) *bg-color*)
-    (draw-rect frame (1+ start-x) start-y 1 (glyph-height) *bg-color*)
+    (draw-rect frame (1- start-x) start-y 1 (glyph-height)
+                     (if title-p *title-bg-color* *bg-color*))
+    (draw-rect frame (1+ start-x) start-y 1 (glyph-height)
+                     (if title-p *title-bg-color* *bg-color*))
 
     ;; Add top and bottom caps
     (draw-rect frame (1- start-x) start-y 3 3 *fg-color*)
