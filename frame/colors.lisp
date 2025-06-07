@@ -2,19 +2,7 @@
 ;;;;
 ;;;; This file defines the programs default colorscheme
 
-(defpackage 9b/colors
-  (:use common-lisp)
-  (:export *fg-color*
-           *bg-color*
-           *scroll-bar-fg-color*
-           *scroll-bar-bg-color*
-           *title-bg-color*
-           *title-sep-color*
-           *corner-bg-color*
-           *corner-unmodified-color*
-           *corner-modified-color*))
-
-(in-package 9b/colors)
+(in-package 9b/frame)
 
 (defparameter *fg-color* '(#x00 #x00 #x00))
 (defparameter *bg-color* '(#xff #xff #xea))

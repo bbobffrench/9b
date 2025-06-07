@@ -8,15 +8,6 @@
 ;;;; format (title-frame . body-frame). A title frame refers to a single frame that will only be used
 ;;;; for displaying a title buffer (e.g. a column header)
 
-(defpackage 9b/frame
-  (:use common-lisp 9b/utils 9b/colors 9b/sys-io)
-  (:export make-frame
-           fill-frame
-           draw-corner
-           draw-scroll-bar
-           draw-buffer-sep
-           draw-frame-sep))
-
 (in-package 9b/frame)
 
 (defparameter *scroll-bar-width* 13)
