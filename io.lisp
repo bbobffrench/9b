@@ -167,8 +167,8 @@
         (let* ((delta-t (- (or time 0) (or release-timestamp 0)))
                (double-click-p (and (= code 1) (< delta-t 500) (= release-x x) (= release-y y)))
                (button (cond (double-click-p :double-click)
-                             ((= code 4) :scroll-down)
-                             ((= code 5) :scroll-up)
+                             ((= code 4) :scroll-up)
+                             ((= code 5) :scroll-down)
                              (t (intern (format nil "BUTTON-~d" code) "KEYWORD")))))
           (list :button-press
                 (cons :button button)
@@ -194,13 +194,23 @@
               (cons :x x)
               (cons :y y)))
 
-      ;;; TODO: Find some way to get arrow keys, escape, etc.
       (:key-press (code state x y)
         (let* ((sym (xlib:keycode->keysym display code (if (= state 1) 1 0)))
-               (char (xlib:keysym->character display sym state)))
-          (if (characterp char)
+               (key (cond ((= sym #xff1b) :escape)
+                          ((= sym #xffff) :delete)
+                          ((= sym #xff0d) :return)
+                          ((= sym #xff08) :backspace)
+                          ((= sym #xff55) :page-up)
+                          ((= sym #xff56) :page-down)
+                          ((= sym #xff52) :up-arrow)
+                          ((= sym #xff54) :down-arrow)
+                          ((= sym #xff51) :left-arrow)
+                          ((= sym #xff53) :right-arrow)
+                          ((= sym #xff09) #\tab)
+                          ((and (>= sym 32) (<= sym 236)) (code-char sym)))))
+          (if key
               (list :key-press
-                    (cons :key char)
+                    (cons :key key)
                     (cons :state (xlib:make-state-keys state))
                     (cons :x x)
                     (cons :y y))
