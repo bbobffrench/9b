@@ -1,14 +1,19 @@
 ;;;; buffer.lisp
 
-(defmacro struct-bind ((&rest slots) var &body body)
-  `(let ,(mapcar
-           (lambda (slot)
-             (let* ((type-str `(symbol-name (type-of ,var)))
-                    (slot-str (symbol-name slot))
-                    (func-str `(concatenate 'string ,type-str "-" ,slot-str)))
-               `(,slot (funcall (intern ,func-str) ,var))))
-           slots)
-     ,@body))
+(defpackage 9b/buffer
+  (:use common-lisp 9b/utils)
+  (:export make-buffer
+           line-len
+           buffer-insert
+           read-file-into-buffer
+           buffer-length
+           buffer-subseq
+           buffer-delete
+           buffer-replace
+           buffer-next-addr
+           buffer-prev-addr))
+
+(in-package 9b/buffer)
 
 (defconstant initial-len 110)
 
@@ -261,9 +266,9 @@
 (defun buffer-next-addr (buff addr)
   (let ((line (buffer-curr-line (buffer-seek buff (car addr)))))
     (cond ((= (cdr addr) (1- (line-len line)))
-           (if (dlist-next line) (cons (car addr) (cdr addr)))) ; Return NIL on EOF
-          ((= (cdr addr) (line-len (dlist-data line)))
-           (cons (1+ (car addr)) 0))
+           (if (dlist-next line) (cons (car addr) (1+ (cdr addr)))))
+          ((= (cdr addr) (line-len line))
+           (if (dlist-next line) (cons (1+ (car addr)) 0)))
           (t (cons (car addr) (1+ (cdr addr)))))))
 
 (defun buffer-prev-addr (buff addr)

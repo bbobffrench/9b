@@ -5,7 +5,9 @@
 ;;; an alpha8 picture format. The function has been redefined here to return an array of the
 ;;; expected element-type.
 
-(defun ft2:bitmap-to-array (bitmap)
+(in-package ft2)
+
+(defun bitmap-to-array (bitmap)
   (let ((buffer (ft-bitmap-buffer bitmap))
         (rows (ft-bitmap-rows bitmap))
         (width (ft-bitmap-width bitmap))

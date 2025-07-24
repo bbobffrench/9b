@@ -8,6 +8,7 @@
   :depends-on ("clx" "cl-freetype2")
 
   :components
-  ((:file "ft2-patch")
-   (:file "io" :depends-on ("ft2-patch"))
+  ((:file "utils")
+   (:file "buffer" :depends-on ("utils"))
+   (:file "io")
    (:file "9b" :depends-on ("io"))))
