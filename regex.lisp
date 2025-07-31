@@ -60,24 +60,17 @@
 (defgeneric read-atoms (obj))
 
 (defmethod read-atoms ((obj stream))
-  (let ((atom (read-atom stream)))
+  (let ((atom (read-atom obj)))
     (cond ((null atom) nil)
-          ((symbolp atom) (cons atom (read-from-stream (read-atom stream))))
+          ((symbolp atom) (cons atom (read-atoms obj)))
           ((eq (car atom) 'group)
            (cons (cons 'group (if (cadr atom) (read-atoms (cadr atom))))
-                 (read-from-stream (read-atom stream))))
-          (t (cons atom (read-from-stream (read-atom stream)))))))
+                 (read-atoms obj)))
+          (t (cons atom (read-atoms obj))))))
 
-(defun read-atoms (str)
-  (with-input-from-string (stream str)
-    (labels ((read-from-stream (atom)
-               (cond ((null atom) nil)
-                     ((symbolp atom) (cons atom (read-from-stream (read-atom stream))))
-                     ((eq (car atom) 'group)
-                      (cons (cons 'group (if (cadr atom) (read-atoms (cadr atom))))
-                            (read-from-stream (read-atom stream))))
-                     (t (cons atom (read-from-stream (read-atom stream)))))))
-      (read-from-stream (read-atom stream)))))
+(defmethod read-atoms ((obj string))
+  (with-input-from-string (stream obj)
+    (read-atoms stream)))
 
 (defun valid-regex-p (tree)
   (let (prev)
@@ -85,7 +78,7 @@
             (cond ;; Ensure all alternative operators have at least 2 operands
                   ((eq (car curr) 'alternative)
                    (if (or (eq prev 'alterative) (symbolp (cadr curr)))
-                       (let ((err (format nil "regexp: missing operand for |~%")))
+                       (let ((err "regexp: missing operand for |"))
                          (return-from valid-regex-p (values nil err)))))
 
                   ;; Enure all REP operators have an operand
@@ -94,7 +87,7 @@
                        (let* ((op (cdr (assoc (car curr) '((one-or-more  . #\+)
                                                            (zero-or-more . #\*)
                                                            (zero-or-one  . #\?)))))
-                              (err (format nil "regexp: missing operand for ~c~%" op)))
+                              (err (format nil "regexp: missing operand for ~c" op)))
                           (return-from valid-regex-p (values nil err)))))
 
                   ;; Recurse on groups, ensuring their validity
@@ -103,13 +96,13 @@
                        (multiple-value-bind (result err) (valid-regex-p (cdar curr))
                          (if (null result)
                              (return-from valid-regex-p (values nil err))))
-                       (let ((err (format nil "regexp: empty or mismatched parentheses~%")))
+                       (let ((err "regexp: empty or mismatched parentheses"))
                          (return-from valid-regex-p (values nil err)))))
 
                   ;; Ensure that all charclasses are valid
                   ((eq (caar curr) 'charclass)
                    (if (null (cdar curr))
-                       (let ((err (format nil "regexp: malformed charclass~%")))
+                       (let ((err "regexp: malformed charclass"))
                          (return-from valid-regex-p (values nil err))))))
             (setf prev (car curr)))
           tree)) t)
@@ -174,3 +167,10 @@
     (if tree
         (multiple-value-bind (term rest) (next-term tree)
           (cons term (group-terms rest))))))
+
+(defun parse-regex (str)
+  (let ((tree (read-atoms str)))
+    (multiple-value-bind (result err) (valid-regex-p tree)
+      (if result
+          (cons 'group (group-terms (group-reps tree)))
+          err))))
