@@ -57,47 +57,92 @@
           ((char= char #\$) '(end-of-line))
           (t (list 'literal char)))))
 
+(defgeneric read-atoms (obj))
+
+(defmethod read-atoms ((obj stream))
+  (let ((atom (read-atom stream)))
+    (cond ((null atom) nil)
+          ((symbolp atom) (cons atom (read-from-stream (read-atom stream))))
+          ((eq (car atom) 'group)
+           (cons (cons 'group (if (cadr atom) (read-atoms (cadr atom))))
+                 (read-from-stream (read-atom stream))))
+          (t (cons atom (read-from-stream (read-atom stream)))))))
+
 (defun read-atoms (str)
   (with-input-from-string (stream str)
-    (labels ((read-atoms% ()
-               (let ((atom (read-atom stream)))
-                 (cond ((null atom) nil)
-                       ((symbolp atom) (cons atom (read-atoms%)))
-                       ((eq (car atom) 'group)
-                        (if (cadr atom)
-                            (cons (list 'group (read-atoms (cadr atom)))
-                                  (read-atoms%))))
-                       (t (cons atom (read-atoms%)))))))
-      (read-atoms%))))
+    (labels ((read-from-stream (atom)
+               (cond ((null atom) nil)
+                     ((symbolp atom) (cons atom (read-from-stream (read-atom stream))))
+                     ((eq (car atom) 'group)
+                      (cons (cons 'group (if (cadr atom) (read-atoms (cadr atom))))
+                            (read-from-stream (read-atom stream))))
+                     (t (cons atom (read-from-stream (read-atom stream)))))))
+      (read-from-stream (read-atom stream)))))
+
+(defun valid-regex-p (tree)
+  (let (prev)
+    (mapl (lambda (curr)
+            (cond ;; Ensure all alternative operators have at least 2 operands
+                  ((eq (car curr) 'alternative)
+                   (if (or (eq prev 'alterative) (symbolp (cadr curr)))
+                       (let ((err (format nil "regexp: missing operand for |~%")))
+                         (return-from valid-regex-p (values nil err)))))
+
+                  ;; Enure all REP operators have an operand
+                  ((symbolp (car curr))
+                   (if (or (null prev) (find prev '(one-or-more zero-or-more zero-or-one)))
+                       (let* ((op (cdr (assoc (car curr) '((one-or-more  . #\+)
+                                                           (zero-or-more . #\*)
+                                                           (zero-or-one  . #\?)))))
+                              (err (format nil "regexp: missing operand for ~c~%" op)))
+                          (return-from valid-regex-p (values nil err)))))
+
+                  ;; Recurse on groups, ensuring their validity
+                  ((eq (caar curr) 'group)
+                   (if (cdar curr)
+                       (multiple-value-bind (result err) (valid-regex-p (cdar curr))
+                         (if (null result)
+                             (return-from valid-regex-p (values nil err))))
+                       (let ((err (format nil "regexp: empty or mismatched parentheses~%")))
+                         (return-from valid-regex-p (values nil err)))))
+
+                  ;; Ensure that all charclasses are valid
+                  ((eq (caar curr) 'charclass)
+                   (if (null (cdar curr))
+                       (let ((err (format nil "regexp: malformed charclass~%")))
+                         (return-from valid-regex-p (values nil err))))))
+            (setf prev (car curr)))
+          tree)) t)
 
 (defun group-reps (tree)
-  (mapcon (lambda (cur)
-            (let ((atom (car cur)))
+  (mapcon (lambda (curr)
+            (let ((atom (car curr)))
               (cond ((null atom) nil)
-                    ((find atom '(zero-or-more one-or-more zero-or-one)) nil)
                     ((eq atom 'alternative) (list atom))
+                    ((symbolp atom) nil)
 
                     ;; Group atoms being used as arguments to REP operators
-                    ((find (cadr cur) '(zero-or-more one-or-more zero-or-one))
-                     (list (cadr cur)
-                           (if (eq (car atom) 'group)
-                               (list 'group (group-reps (cadr atom)))
-                               atom)))
+                    ((find (cadr curr) '(zero-or-more one-or-more zero-or-one))
+                     (list (list (cadr curr)
+                                 (if (eq (car atom) 'group)
+                                     (cons 'group (group-reps (cdr atom)))
+                                     atom))))
 
                     ;; Otherwise keep the atom on its own
                     (t (if (eq (car atom) 'group)
-                            (list (list 'group (group-reps (cadr atom))))
+                            (list (cons 'group (group-reps (cdr atom))))
                             (list atom))))))
           tree))
 
 (defun group-terms (tree)
   (labels ((process-curr (tree) ; Recurse on groups
              (if (eq (caar tree) 'group)
-                 (cons 'group (group-terms (cadar tree)))
+                 (cons 'group (group-terms (cdar tree)))
                  (car tree)))
 
            (next-term (tree &optional type)
              (cond ((null tree) nil)
+                   ;; Determine the term type and begin grouping
                    ((null type)
                     (let ((type (if (eq (cadr tree) 'alternative)
                                     'alternative
@@ -110,6 +155,7 @@
                         (values (nconc (list type (process-curr tree)) term)
                                 rest))))
 
+                   ;; Group alternative terms
                    ((eq type 'alternative)
                     (if (eq (cadr tree) 'alternative)
                         (multiple-value-bind (term rest) (next-term (cddr tree) 'alternative)
@@ -118,11 +164,13 @@
                         (values (list (process-curr tree))
                                 (cdr tree))))
 
+                   ;; Group concatenated terms
                    (t (if (eq (cadr tree) 'alternative)
                           (values nil tree)
                           (multiple-value-bind (term rest) (next-term (cdr tree) 'concatenated)
                             (values (cons (process-curr tree) term)
                                     rest)))))))
+    ;; Return a list of all terms present in the tree
     (if tree
         (multiple-value-bind (term rest) (next-term tree)
           (cons term (group-terms rest))))))
