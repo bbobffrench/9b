@@ -111,7 +111,7 @@
 
 ;;; From this point on, all trees are assumed to be valid
 
-(declaim (ftype function read-atoms))
+(declaim (ftype function read-terms))
 
 ;;; An expression is a literal or repeated atom
 
@@ -119,6 +119,7 @@
   (let ((next (cadr tree))
         ;; Expand groups
         (atom (if (and (listp (car tree)) (eq (caar tree) 'concatenated))
+                  ;; Remove redundant concatenates, not necessary
                   (let ((expansion (read-terms (cdar tree))))
                     (if (cdr expansion)
                         (cons 'concatenated expansion)
@@ -169,6 +170,7 @@
   (let ((tree (read-atoms str)))
     (multiple-value-bind (result err) (valid-regex-p tree)
       (if result
+          ;; Remove redundant concatenates, not necessary
           (let ((terms (read-terms tree)))
             (if (cdr terms)
                 (cons 'concatenated terms)
