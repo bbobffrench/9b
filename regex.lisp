@@ -1,5 +1,5 @@
 ;;;; regex.lisp
-;;;; as described by plan9port's regexp(7)
+;;;; as described (for the most part) by plan9port's regexp(7)
 
 (defun extract-until (stream end-char &optional start-char)
   (let ((num-escapes 0) (balance 0))
@@ -37,6 +37,8 @@
                           (add-chars (read-char stream nil))))))
         (add-chars (read-char stream nil))))))
 
+;;; An atom is a literal, charclass, group, REP operator, or alternative operator
+
 (defun read-atom (stream)
   (let ((char (read-char stream nil)))
     (cond ((null char) nil) ; No atoms left
@@ -46,7 +48,7 @@
                    (if (char= next #\n)
                        #\newline
                        next))))
-          ((char= char #\() (list 'group (extract-until stream #\) #\()))
+          ((char= char #\() (list 'concatenated (extract-until stream #\) #\()))
           ((char= char #\[) (list 'charclass (extract-until stream #\])))
           ((char= char #\|) 'alternative)
           ((char= char #\*) 'zero-or-more)
@@ -63,8 +65,8 @@
   (let ((atom (read-atom obj)))
     (cond ((null atom) nil)
           ((symbolp atom) (cons atom (read-atoms obj)))
-          ((eq (car atom) 'group)
-           (cons (cons 'group (if (cadr atom) (read-atoms (cadr atom))))
+          ((eq (car atom) 'concatenated)
+           (cons (cons 'concatenated (if (cadr atom) (read-atoms (cadr atom))))
                  (read-atoms obj)))
           (t (cons atom (read-atoms obj))))))
 
@@ -91,7 +93,7 @@
                           (return-from valid-regex-p (values nil err)))))
 
                   ;; Recurse on groups, ensuring their validity
-                  ((eq (caar curr) 'group)
+                  ((eq (caar curr) 'concatenated)
                    (if (cdar curr)
                        (multiple-value-bind (result err) (valid-regex-p (cdar curr))
                          (if (null result)
@@ -107,70 +109,68 @@
             (setf prev (car curr)))
           tree)) t)
 
-(defun group-reps (tree)
-  (mapcon (lambda (curr)
-            (let ((atom (car curr)))
-              (cond ((null atom) nil)
-                    ((eq atom 'alternative) (list atom))
-                    ((symbolp atom) nil)
+;;; From this point on, all trees are assumed to be valid
 
-                    ;; Group atoms being used as arguments to REP operators
-                    ((find (cadr curr) '(zero-or-more one-or-more zero-or-one))
-                     (list (list (cadr curr)
-                                 (if (eq (car atom) 'group)
-                                     (cons 'group (group-reps (cdr atom)))
-                                     atom))))
+(declaim (ftype function read-atoms))
 
-                    ;; Otherwise keep the atom on its own
-                    (t (if (eq (car atom) 'group)
-                            (list (cons 'group (group-reps (cdr atom))))
-                            (list atom))))))
-          tree))
+;;; An expression is a literal or repeated atom
 
-(defun group-terms (tree)
-  (labels ((process-curr (tree) ; Recurse on groups
-             (if (eq (caar tree) 'group)
-                 (cons 'group (group-terms (cdar tree)))
-                 (car tree)))
+(defun next-expr (tree)
+  (let ((next (cadr tree))
+        ;; Expand groups
+        (atom (if (and (listp (car tree)) (eq (caar tree) 'concatenated))
+                  (let ((expansion (read-terms (cdar tree))))
+                    (if (cdr expansion)
+                        (cons 'concatenated expansion)
+                        (car expansion)))
+                  (car tree))))
+    (if (or (listp next) (eq next 'alternative))
+        (values atom (cdr tree))
+        (values (list next atom) (cddr tree)))))
 
-           (next-term (tree &optional type)
-             (cond ((null tree) nil)
-                   ;; Determine the term type and begin grouping
-                   ((null type)
-                    (let ((type (if (eq (cadr tree) 'alternative)
-                                    'alternative
-                                    'concatenated)))
-                      (multiple-value-bind (term rest)
-                          (next-term (if (eq type 'alternative)
-                                         (cddr tree)
-                                         (cdr tree))
-                                     type)
-                        (values (nconc (list type (process-curr tree)) term)
-                                rest))))
+;;; A term is a sequence of concatenated or alternative expressions
 
-                   ;; Group alternative terms
-                   ((eq type 'alternative)
-                    (if (eq (cadr tree) 'alternative)
-                        (multiple-value-bind (term rest) (next-term (cddr tree) 'alternative)
-                          (values (cons (process-curr tree) term)
-                                  rest))
-                        (values (list (process-curr tree))
-                                (cdr tree))))
+(defun finish-alternative-term (tree)
+  (if (eq (car tree) 'alternative)
+      (multiple-value-bind (expr rest) (next-expr (cdr tree))
+        (multiple-value-bind (term rest) (finish-alternative-term rest)
+          (values (cons expr term) rest)))
+      (values nil tree)))
 
-                   ;; Group concatenated terms
-                   (t (if (eq (cadr tree) 'alternative)
-                          (values nil tree)
-                          (multiple-value-bind (term rest) (next-term (cdr tree) 'concatenated)
-                            (values (cons (process-curr tree) term)
-                                    rest)))))))
-    ;; Return a list of all terms present in the tree
-    (if tree
-        (multiple-value-bind (term rest) (next-term tree)
-          (cons term (group-terms rest))))))
+(defun alternative-term-p (tree)
+  (if (eq (cadr tree) 'alternative)
+      t
+      (if (symbolp (cadr tree)) ; In case of REP operator
+          (eq (caddr tree) 'alternative))))
+
+(defun finish-concatenated-term (tree)
+  (if (or (null tree) (alternative-term-p tree))
+      (values nil tree)
+      (multiple-value-bind (expr rest) (next-expr tree)
+        (multiple-value-bind (term rest) (finish-concatenated-term rest)
+          (values (cons expr term) rest)))))
+
+(defun next-term (tree)
+  (multiple-value-bind (expr rest) (next-expr tree)
+    (if (eq (car rest) 'alternative)
+        (multiple-value-bind (term rest) (finish-alternative-term rest)
+          (if expr
+              (values (nconc (list 'alternative expr) term) rest)))
+        (multiple-value-bind (term rest) (finish-concatenated-term rest)
+          (if expr
+              (values (nconc (list 'concatenated expr) term) rest))))))
+
+(defun read-terms (tree)
+  (if tree
+      (multiple-value-bind (term rest) (next-term tree)
+        (cons term (read-terms rest)))))
 
 (defun parse-regex (str)
   (let ((tree (read-atoms str)))
     (multiple-value-bind (result err) (valid-regex-p tree)
       (if result
-          (cons 'group (group-terms (group-reps tree)))
+          (let ((terms (read-terms tree)))
+            (if (cdr terms)
+                (cons 'concatenated terms)
+                (car terms)))
           err))))
